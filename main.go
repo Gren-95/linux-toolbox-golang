@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/spf13/cobra"
 	"log"
@@ -9,6 +10,13 @@ import (
 	"os/exec"
 	"os/user"
 	"strings"
+)
+
+// Authentication information
+const (
+	vpnUser    = "" // Replace with actual VPN user
+	vpnAddress = "" // Replace with actual VPN address
+	vpnGroup   = "" // Replace with actual VPN group
 )
 
 func main() {
@@ -71,8 +79,51 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(fishEditCmd)
+	var rpgmCheatsCmd = &cobra.Command{
+		Use:   "rpgmCheats",
+		Short: "Clone RPGM Cheat Menu and run the patcher",
+		Run: func(cmd *cobra.Command, args []string) {
+			path, _ := cmd.Flags().GetString("path")
+			if path == "" {
+				var err error
+				path, err = os.Getwd()
+				if err != nil {
+					log.Fatalf("Failed to get current directory: %v", err)
+				}
+			}
+			rpgmCheats(path)
+		},
+	}
+	rpgmCheatsCmd.Flags().StringP("path", "p", "", "Path to the directory")
 
+	var ooklaSpeedTestCmd = &cobra.Command{
+		Use:   "ooklaSpeedTest",
+		Short: "Run Ookla Speed Test",
+		Run: func(cmd *cobra.Command, args []string) {
+			ooklaSpeedTest()
+		},
+	}
+
+	var timeshiftBackupCmd = &cobra.Command{
+		Use:   "timeshiftBackup",
+		Short: "Create a Timeshift backup",
+		Run: func(cmd *cobra.Command, args []string) {
+			timeshiftBackup()
+		},
+	}
+	var jeldwenVpnConnectCmd = &cobra.Command{
+		Use:   "jeldwenVpnConnect",
+		Short: "Connect to Jeld-Wen VPN",
+		Run: func(cmd *cobra.Command, args []string) {
+			jeldwenVpnConnect()
+		},
+	}
+
+	rootCmd.AddCommand(jeldwenVpnConnectCmd)
+	rootCmd.AddCommand(timeshiftBackupCmd)
+	rootCmd.AddCommand(ooklaSpeedTestCmd)
+	rootCmd.AddCommand(rpgmCheatsCmd)
+	rootCmd.AddCommand(fishEditCmd)
 	rootCmd.AddCommand(ipListCmd)
 	rootCmd.AddCommand(guiCmd)
 	rootCmd.AddCommand(mediaRestartCmd)
@@ -204,6 +255,80 @@ func launchGUI() {
 	})
 	vbox.PackStart(fishEditButton, false, false, 0)
 
+	rpgmCheatsButton, err := gtk.ButtonNewWithLabel("Run RPGM Cheats")
+	if err != nil {
+		log.Fatal("Unable to create button:", err)
+	}
+	rpgmCheatsButton.SetMarginTop(5)
+	rpgmCheatsButton.SetMarginBottom(5)
+	rpgmCheatsButton.SetSizeRequest(150, -1)
+	rpgmCheatsButton.Connect("clicked", func() {
+		fileChooserDialog, err := gtk.FileChooserDialogNewWith2Buttons(
+			"Select Folder",
+			win,
+			gtk.FILE_CHOOSER_ACTION_SELECT_FOLDER,
+			"Cancel",
+			gtk.RESPONSE_CANCEL,
+			"Select",
+			gtk.RESPONSE_ACCEPT,
+		)
+		if err != nil {
+			log.Fatal("Unable to create file chooser dialog:", err)
+		}
+		if fileChooserDialog.Run() == gtk.RESPONSE_ACCEPT {
+			folder := fileChooserDialog.GetFilename()
+			fileChooserDialog.Destroy()
+			rpgmCheats(folder)
+		} else {
+			fileChooserDialog.Destroy()
+		}
+	})
+	vbox.PackStart(rpgmCheatsButton, false, false, 0)
+
+	ooklaSpeedTestButton, err := gtk.ButtonNewWithLabel("Run Speed Test")
+	if err != nil {
+		log.Fatal("Unable to create button:", err)
+	}
+	ooklaSpeedTestButton.SetMarginTop(5)
+	ooklaSpeedTestButton.SetMarginBottom(5)
+	ooklaSpeedTestButton.SetSizeRequest(150, -1)
+	ooklaSpeedTestButton.Connect("clicked", func() {
+		ooklaSpeedTest()
+	})
+	vbox.PackStart(ooklaSpeedTestButton, false, false, 0)
+
+	timeshiftBackupButton, err := gtk.ButtonNewWithLabel("Create Timeshift Backup")
+	if err != nil {
+		log.Fatal("Unable to create button:", err)
+	}
+	timeshiftBackupButton.SetMarginTop(5)
+	timeshiftBackupButton.SetMarginBottom(5)
+	timeshiftBackupButton.SetSizeRequest(200, -1)
+	timeshiftBackupButton.Connect("clicked", func() {
+		go func() {
+			timeshiftBackup()
+			glib.IdleAdd(func() {
+				dialog := gtk.MessageDialogNew(win, gtk.DIALOG_MODAL, gtk.MESSAGE_INFO, gtk.BUTTONS_OK, "Backup complete")
+				dialog.SetDefaultResponse(gtk.RESPONSE_OK)
+				dialog.Run()
+				dialog.Destroy()
+			})
+		}()
+	})
+	vbox.PackStart(timeshiftBackupButton, false, false, 0)
+
+	jeldwenVpnConnectButton, err := gtk.ButtonNewWithLabel("Connect to Jeld-Wen VPN")
+	if err != nil {
+		log.Fatal("Unable to create button:", err)
+	}
+	jeldwenVpnConnectButton.SetMarginTop(5)
+	jeldwenVpnConnectButton.SetMarginBottom(5)
+	jeldwenVpnConnectButton.SetSizeRequest(200, -1)
+	jeldwenVpnConnectButton.Connect("clicked", func() {
+		jeldwenVpnConnect()
+	})
+	vbox.PackStart(jeldwenVpnConnectButton, false, false, 0)
+
 	win.Add(vbox)
 	win.SetDefaultSize(400, 300)
 	win.ShowAll()
@@ -224,22 +349,21 @@ var musicCmd *exec.Cmd
 func musicStart() {
 	usr, err := user.Current()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to get current user: %v", err)
 	}
 
-	musicCmd = exec.Command("sh", "-c", "mpv --no-video --speed=1 --shuffle "+usr.HomeDir+"/Music/*")
-
+	musicCmd = exec.Command("mpv", "--no-video", "--speed=1", "--shuffle", usr.HomeDir+"/Music/*")
 	err = musicCmd.Start()
 	if err != nil {
 		log.Fatalf("Failed to start music playback: %v", err)
 	}
 
-	log.Println("Music playback started successfully")
+	log.Printf("Music playback started successfully with command: %v", musicCmd.Args)
 }
 
 func musicEnd() {
 	if musicCmd != nil && musicCmd.Process != nil {
-		err := musicCmd.Process.Kill()
+		err := musicCmd.Process.Signal(os.Interrupt)
 		if err != nil {
 			log.Fatalf("Failed to stop music playback: %v", err)
 		}
@@ -250,7 +374,7 @@ func musicEnd() {
 }
 
 func fileMvUp(folder string) {
-	cmd := exec.Command("sh", "-c", "find "+folder+" -mindepth 2 -type f -print -exec mv {} "+folder+" \\;")
+	cmd := exec.Command("sh", "-c", "find \""+folder+"\" -mindepth 2 -type f -print -exec mv {} \""+folder+"\" \\;")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Fatalf("Failed to move files up: %v\nOutput: %s", err, output)
@@ -270,27 +394,83 @@ func ipList() {
 func fishEdit() {
 	usr, err := user.Current()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to get current user: %v", err)
 	}
 
 	term := "gnome-terminal"
-	termFlags := " -- bash -c"
-	editor := "vim"
-	filePath := usr.HomeDir + "/.config/fish/config.fish"
+	termFlags := []string{"--", "bash", "-c"}
+	editor := "vim \"" + usr.HomeDir + "/.config/fish/config.fish\""
+	cmd := exec.Command(term, append(termFlags, editor)...)
 
-	cmd := exec.Command(term, termFlags, editor+" "+filePath)
 	err = cmd.Run()
 	if err != nil {
-		log.Fatalf("Failed to edit fish config: %v", err)
+		log.Fatalf("Failed to run command '%s %s': %v", term, strings.Join(termFlags, " "), err)
 	}
 
 	fishReloadScript()
 }
 
 func fishReloadScript() {
-	cmd := exec.Command("fish", "-c", "source /home/ghost/.config/fish/config.fish")
-	err := cmd.Run()
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatalf("Failed to get current user: %v", err)
+	}
+	cmd := exec.Command("fish", "-c", "source \""+usr.HomeDir+"/.config/fish/config.fish\"")
+	err = cmd.Run()
 	if err != nil {
 		log.Fatalf("Failed to reload fish config: %v", err)
+	}
+}
+
+func rpgmCheats(path string) {
+	// Check if wine is installed
+	_, err := exec.LookPath("wine")
+	if err != nil {
+		log.Fatalf("wine is not installed or not found in PATH: %v", err)
+	}
+
+	cmd := exec.Command("sh", "-c", fmt.Sprintf(`
+if [ ! -d "RPGM_Cheat_Menu" ]; then
+    git clone https://github.com/Gren-95/RPGM_Cheat_Menu.git
+fi
+cp -r RPGM_Cheat_Menu/MVPluginPatcher.exe RPGM_Cheat_Menu/plugins_patch.txt RPGM_Cheat_Menu/www/ "%s"
+`, path))
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatalf("Failed to run RPGM Cheats: %v\nOutput: %s", err, output)
+	}
+	log.Printf("RPGM Cheats executed successfully:\nDo not forget to actually run the MVPluginPatcher.exe file!\n%s", output)
+}
+
+func ooklaSpeedTest() {
+
+	term := "gnome-terminal"
+	termFlags := []string{"--", "bash", "-c"}
+	command := "speedtest-cli && sleep 5"
+	cmd := exec.Command(term, append(termFlags, command)...)
+
+	err := cmd.Run()
+	if err != nil {
+		log.Fatalf("Failed to run speedtest-cli: %v", err)
+	}
+}
+
+func timeshiftBackup() {
+	cmd := exec.Command("sudo", "timeshift", "--create")
+	err := cmd.Run()
+	if err != nil {
+		log.Fatalf("Failed to create timeshift backup: %v", err)
+	}
+}
+
+func jeldwenVpnConnect() {
+	cmd := exec.Command("gnome-terminal", "--", "sudo", "openconnect", "--user="+vpnUser, vpnAddress, "--authgroup="+vpnGroup)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Start()
+	if err != nil {
+		log.Fatalf("Failed to connect to VPN: %v", err)
 	}
 }
